@@ -7,7 +7,7 @@ import secrets
 import threading
 from dataclasses import dataclass
 
-from fastapi import Request
+from starlette.requests import Request
 
 from .config import Settings, normalize_gate_answer
 
@@ -102,4 +102,3 @@ class AccessGate:
             return
         with self._lock:
             self._sessions.pop(token, None)
-

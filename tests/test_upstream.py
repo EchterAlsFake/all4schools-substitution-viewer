@@ -5,8 +5,10 @@ import json
 from dataclasses import replace
 from datetime import datetime
 
+import pytest
+
 from backend.database import Database
-from backend.schemas import UpstreamSubstitution
+from backend.schemas import SchemaValidationError, UpstreamSubstitution
 from backend.upstream import (
     BERLIN,
     PlanSynchronizer,
@@ -36,7 +38,7 @@ def sample_entry(**changes):
         "comment": "Aufgaben von Abc; Rückfrage bei LiGyDe.Abc.",
     }
     payload.update(changes)
-    return UpstreamSubstitution.model_validate(payload)
+    return UpstreamSubstitution.from_payload(payload)
 
 
 def test_query_window_skips_weekend():
@@ -64,6 +66,35 @@ def test_normalization_removes_all_teacher_objects_and_ids():
         {"LiGyDe.Abc", "Abc"},
     )
     assert same_public_entry[0]["id"] == normalized[0]["id"]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": "123"},
+        {"type": True},
+        {"start": "not-a-date"},
+        {"oldSubject": "x" * 201},
+        {"oldRooms": [{"name": "A415"}] * 33},
+        {"oldTeachers": [{"name": "x" * 201}]},
+    ],
+)
+def test_upstream_schema_rejects_wrong_types_and_exceeded_limits(changes):
+    payload = sample_entry().to_payload()
+    payload.update(changes)
+
+    with pytest.raises(SchemaValidationError):
+        UpstreamSubstitution.from_payload(payload)
+
+
+def test_upstream_schema_ignores_unselected_fields():
+    payload = sample_entry().to_payload()
+    payload["unexpected"] = {"private": "not selected"}
+    payload["oldRooms"][0]["unexpected"] = "not selected"
+
+    parsed = UpstreamSubstitution.from_payload(payload)
+
+    assert parsed.to_payload() == sample_entry().to_payload()
 
 
 def test_teacher_redaction_handles_titles_and_known_names():
@@ -129,6 +160,20 @@ class FakeResponse:
         return self.payload
 
 
+def test_invalid_upstream_schema_does_not_create_a_cache(settings):
+    database = Database(settings.database_path)
+    database.initialize()
+    synchronizer = PlanSynchronizer(settings, database)
+    synchronizer._request = lambda payload, version: FakeResponse(  # type: ignore[method-assign]
+        [{"id": "not-an-integer"}]
+    )
+
+    result = synchronizer.fetch()
+
+    assert result == {"status": "error", "code": "invalid_upstream_schema"}
+    assert not settings.cache_path.exists()
+
+
 def fake_jwt(subject: str = "vplan-test") -> str:
     def encode(payload: dict[str, str]) -> str:
         return base64.urlsafe_b64encode(
@@ -148,7 +193,7 @@ def test_http3_is_tried_before_http2_fallback(settings):
         calls.append((payload, http_version))
         if http_version == "v3":
             raise UpstreamError("transport_error_v3")
-        return FakeResponse([sample_entry().model_dump(mode="json")])
+        return FakeResponse([sample_entry().to_payload()])
 
     synchronizer._request = request  # type: ignore[method-assign]
     result = synchronizer.fetch()
@@ -178,7 +223,7 @@ def test_expired_token_is_refreshed_persisted_and_retried_once(settings):
         plan_tokens.append(synchronizer._api_token)
         if len(plan_tokens) == 1:
             raise UpstreamError("upstream_http_401")
-        return FakeResponse([sample_entry().model_dump(mode="json")])
+        return FakeResponse([sample_entry().to_payload()])
 
     def refresh_request(token, http_version):
         refresh_calls.append((token, http_version))
@@ -312,7 +357,7 @@ def test_refresh_failure_falls_back_to_session_authentication(settings):
         plan_requests += 1
         if plan_requests == 1:
             raise UpstreamError("upstream_http_401")
-        return FakeResponse([sample_entry().model_dump(mode="json")])
+        return FakeResponse([sample_entry().to_payload()])
 
     def fail_refresh():
         raise UpstreamError("token_refresh_upstream_http_401")
@@ -435,7 +480,7 @@ def test_unchanged_fetch_does_not_rewrite_cache(settings, monkeypatch):
     database = Database(settings.database_path)
     database.initialize()
     synchronizer = PlanSynchronizer(settings, database)
-    response = FakeResponse([sample_entry().model_dump(mode="json")])
+    response = FakeResponse([sample_entry().to_payload()])
     synchronizer._request = lambda payload, version: response  # type: ignore[method-assign]
 
     assert synchronizer.fetch()["status"] == "updated"
@@ -472,7 +517,7 @@ def test_failed_refresh_keeps_last_valid_plan_and_marks_it_stale(settings):
     database.initialize()
     synchronizer = PlanSynchronizer(settings, database)
     synchronizer._request = lambda payload, version: FakeResponse(  # type: ignore[method-assign]
-        [sample_entry().model_dump(mode="json")]
+        [sample_entry().to_payload()]
     )
     assert synchronizer.fetch()["status"] == "updated"
 

@@ -10,7 +10,7 @@ mobile-first und barrierearm dar, ersetzt ihn aber nicht. Der Dienst liegt in ei
 Repository und läuft unabhängig vom kommerziellen Flask-Server:
 
 - kommerzieller Server: Port 8000;
-- VPlan: FastAPI/Uvicorn auf Port 8001;
+- VPlan: Starlette/Uvicorn auf Port 8001;
 - öffentliche VPlan-Route: `https://vplan.echteralsfake.me/`;
 - der alte Pfad `/vplan` leitet innerhalb des neuen Dienstes dauerhaft auf `/` um;
 - `main.py` enthält keine VPlan-Routen, Synchronisation, Modelle oder Assets mehr.
@@ -30,7 +30,7 @@ Frontend:
 | `src/components/SiteHeader.svelte` | Kopfbereich, Sprache, Theme und responsive Tagesnavigation |
 | `src/components/LegalPage.svelte` | Datenschutz und Verantwortlicher |
 | `src/components/TranslatorPage.svelte` | rein lokaler Übersetzungseditor |
-| `src/lib/api.ts` | typisierter Zugriff auf die eigene FastAPI |
+| `src/lib/api.ts` | typisierter Zugriff auf die eigene Starlette-API |
 | `src/lib/day-navigation.ts` | flüchtige Verbindung zwischen Plan und Tagesnavigation im Header |
 | `src/lib/refresh-schedule.ts` | Berliner Zeitfenster für die automatische Cache-Aktualisierung |
 | `src/lib/storage.ts` | fehlertoleranter Zugriff auf `localStorage` |
@@ -41,11 +41,11 @@ Backend:
 
 | Pfad | Aufgabe |
 | --- | --- |
-| `backend/app.py` | FastAPI, Routen, Header, Hintergrundjobs und statische Auslieferung |
+| `backend/app.py` | Starlette, Routen, Header, Hintergrundjobs und statische Auslieferung |
 | `backend/auth.py` | RAM-basierte Zugangsschranke und IP-Pseudonymisierung |
 | `backend/upstream.py` | offizieller API-Abruf, Validierung, Redaktion und atomarer Cache |
 | `backend/database.py` | separate SQLite-Datenbank über SQLAlchemy |
-| `backend/schemas.py` | strikte Pydantic-Eingangsmodelle |
+| `backend/schemas.py` | unveränderliche Dataclasses und strikte Validatoren für nicht vertrauenswürdige Eingaben |
 | `backend/config.py` | lokale `.env`, Validierung und sichere nicht-sensible Defaults |
 | `backend/manage.py` | lokale Operator-Befehle für validierte private Datenimporte |
 | `tests/` | Backend-, Datenschutz-, Redaktions- und i18n-Verträge |
@@ -53,7 +53,7 @@ Backend:
 Build und Laufzeit:
 
 - Vite, TypeScript, Svelte 5 und Tailwind CSS 4;
-- FastAPI, Uvicorn, SQLAlchemy und `curl-cffi`;
+- Starlette, Uvicorn, SQLAlchemy und `curl-cffi`;
 - `package-lock.json` und `uv.lock` sind reproduzierbare Lockfiles;
 - `node_modules/`, `dist/`, `.venv/`, `.env` und `data/` bleiben unversioniert.
 
@@ -65,7 +65,7 @@ offizielle Substitution-API
   ├─ bei 401/403: Refresh-API → neues JWT atomar in .env → erneuter Abruf
   └─ falls weiter unautorisiert: JwtAuth → neue RAM-Session → letzter Abruf
   ▼
-Pydantic-Limits und Schema-Prüfung
+Explizite Längenlimits, Typ- und Schema-Prüfung
   │
   ├─ Lehrkraftobjekte/IDs nur flüchtig zur Redaktion verwenden
   ├─ bekannte Lehrkraftnamen intern pro Schuljahr lernen oder lokal importieren

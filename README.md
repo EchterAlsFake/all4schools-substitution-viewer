@@ -22,7 +22,7 @@ like that, make your own :)
 # VPlan
 
 Eigenständige mobile Vertretungsplan-App mit Svelte, TypeScript, Vite, Tailwind CSS und einem
-FastAPI-Backend.
+Starlette-Backend.
 
 ## Einrichtung
 

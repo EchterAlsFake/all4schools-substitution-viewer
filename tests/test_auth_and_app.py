@@ -51,6 +51,42 @@ async def test_three_wrong_answers_block_until_a_new_app_instance(settings):
         assert (await answer(restarted, " room42 ")).status_code == 200
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {},
+        {"answer": "ROOM42", "extra": True},
+        {"answer": 42},
+        {"answer": ""},
+        {"answer": "x" * 33},
+        {"answer": "ROOM\n42"},
+    ],
+)
+async def test_gate_rejects_invalid_json_schemas_without_counting_attempts(
+    settings, payload
+):
+    async with client_for(settings) as client:
+        invalid = await client.post("/api/auth/answer", json=payload)
+        status = await client.get("/api/auth/status")
+
+    assert invalid.status_code == 422
+    assert invalid.json()["code"] == "invalid_request"
+    assert status.json()["remainingAttempts"] == 3
+
+
+async def test_gate_rejects_malformed_json(settings):
+    async with client_for(settings) as client:
+        invalid = await client.post(
+            "/api/auth/answer",
+            content=b"{",
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert invalid.status_code == 422
+    assert invalid.json()["code"] == "invalid_request"
+
+
 async def test_success_creates_httponly_session_and_protects_plan(settings):
     settings.cache_path.write_text(
         json.dumps(
@@ -124,6 +160,30 @@ async def test_feedback_validation_and_storage(settings):
     with database.session() as database_session:
         messages = list(database_session.scalars(select(Feedback.message)))
     assert messages == ["Anzeige bei Kurs ' OR 1=1 -- funktioniert nicht."]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"message": "Gültige Meldung.", "privacy_confirmed": True, "extra": 1},
+        {"message": 123, "privacy_confirmed": True},
+        {"message": "zu kurz", "privacy_confirmed": True},
+        {"message": "x" * 1_501, "privacy_confirmed": True},
+        {"message": "Gültige Meldung.", "privacy_confirmed": "true"},
+    ],
+)
+async def test_feedback_rejects_invalid_json_schemas(settings, payload):
+    async with client_for(settings) as client:
+        await answer(client, "ROOM42")
+        invalid = await client.post(
+            "/api/feedback",
+            headers={"X-VPlan-Request": "feedback"},
+            json=payload,
+        )
+
+    assert invalid.status_code == 422
+    assert invalid.json()["code"] == "invalid_request"
 
 
 async def test_feedback_global_rate_limit(settings):

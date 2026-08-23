@@ -15,15 +15,13 @@ from zoneinfo import ZoneInfo
 from curl_cffi import requests
 from curl_cffi.requests.exceptions import RequestException
 from dotenv import set_key
-from pydantic import TypeAdapter, ValidationError
 
 from .config import Settings
 from .database import Database
-from .schemas import UpstreamSubstitution
+from .schemas import UpstreamSubstitution, parse_upstream_substitutions
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
-UPSTREAM_LIST = TypeAdapter(list[UpstreamSubstitution])
 EXPLICIT_TEACHER_RE = re.compile(r"\bLiGyDe\.[^\s,;.<>()]+", re.IGNORECASE)
 PERSON_NAME_PART_PATTERN = (
     r"[A-ZÄÖÜÀ-ÖØ-ÞĀ-Ž]"
@@ -600,10 +598,8 @@ class PlanSynchronizer:
 
             try:
                 raw_payload = response.json()
-                if not isinstance(raw_payload, list) or len(raw_payload) > 10_000:
-                    raise ValueError
-                upstream_entries = UPSTREAM_LIST.validate_python(raw_payload)
-            except (ValueError, ValidationError) as exc:
+                upstream_entries = parse_upstream_substitutions(raw_payload)
+            except ValueError:
                 self._last_fetch_failed = True
                 result: dict[str, Any] = {
                     "status": "error",

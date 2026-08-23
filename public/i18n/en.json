@@ -293,7 +293,7 @@
   "translator.status.source_error": "The German source catalogue could not be loaded. Please try again later.",
   "credits.kicker": "Contributors & technology",
   "credits.tech": "Technology",
-  "credits.stack": "Svelte, TypeScript, Vite, Tailwind CSS, FastAPI and Python",
+  "credits.stack": "Svelte, TypeScript, Vite, Tailwind CSS, Starlette and Python",
   "credits.stack_label": "Languages and frameworks used",
   "credits.programming": "Programming",
   "credits.hosting": "Hosting",

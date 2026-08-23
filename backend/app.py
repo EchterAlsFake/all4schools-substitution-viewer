@@ -5,15 +5,20 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime, time as datetime_time, timedelta, timezone
-from pathlib import Path
+from typing import Callable, TypeVar
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse, RedirectResponse
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from .auth import COOKIE_NAME, AccessGate, ClientIdentityError
-from .config import BASE_DIR, Settings
+from .config import Settings
 from .database import Database
 from .schemas import FeedbackSubmission, GateAnswer
 from .upstream import BERLIN, PlanSynchronizer, school_year
@@ -26,10 +31,20 @@ CONTACT_RE = re.compile(
 )
 PHONE_RE = re.compile(r"(?:\+?\d[\d\s()./-]{5,}\d)")
 HTML_RE = re.compile(r"<[^>]+>")
+SchemaType = TypeVar("SchemaType")
 
 
 def _json_error(code: str, status_code: int, **extra: object) -> JSONResponse:
     return JSONResponse({"ok": False, "code": code, **extra}, status_code=status_code)
+
+
+async def _validated_json(
+    request: Request, parser: Callable[[object], SchemaType]
+) -> SchemaType:
+    try:
+        return parser(await request.json())
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="invalid_request") from exc
 
 
 def seconds_until_sync_window(now: datetime | None = None) -> float:
@@ -46,7 +61,7 @@ def seconds_until_sync_window(now: datetime | None = None) -> float:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> Starlette:
     active_settings = settings or Settings.load()
     database = Database(active_settings.database_path)
     database.initialize()
@@ -102,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pass
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(_: Starlette):
         sync_task = (
             asyncio.create_task(background_sync())
             if active_settings.sync_enabled
@@ -119,28 +134,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.gather(*tasks, return_exceptions=True)
             synchronizer.close()
 
-    app = FastAPI(
-        title="VPlan",
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None,
-        lifespan=lifespan,
-    )
-    app.state.settings = active_settings
-    app.state.database = database
-    app.state.gate = gate
-    app.state.synchronizer = synchronizer
-    app.state.stop_event = stop_event
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[
-            active_settings.public_host,
-            "localhost",
-            "127.0.0.1",
-            "[::1]",
-            "testserver",
-        ],
-    )
     content_security_policy = [
         "default-src 'self'",
         "base-uri 'self'",
@@ -159,7 +152,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         content_security_policy.append("upgrade-insecure-requests")
     content_security_policy_header = "; ".join(content_security_policy)
 
-    @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
@@ -206,34 +198,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }:
             raise HTTPException(status_code=403, detail="invalid_origin")
 
-    @app.exception_handler(HTTPException)
     async def http_error_handler(_: Request, exc: HTTPException):
         code = str(exc.detail) if isinstance(exc.detail, str) else "request_failed"
         return _json_error(code, exc.status_code)
 
-    @app.get("/healthz")
-    async def health() -> dict[str, object]:
-        return {
-            "ok": not active_settings.configuration_errors,
-            "configured": not active_settings.configuration_errors,
-        }
+    async def health(_: Request) -> JSONResponse:
+        return JSONResponse(
+            {
+                "ok": not active_settings.configuration_errors,
+                "configured": not active_settings.configuration_errors,
+            }
+        )
 
-    @app.get("/api/auth/status")
     async def auth_status(request: Request):
         if active_settings.configuration_errors:
             return _json_error("service_not_configured", 503)
         client_key = identity(request)
         status = gate.status(client_key, request.cookies.get(COOKIE_NAME))
-        return {
-            "ok": True,
-            "authorized": status.authorized,
-            "blocked": status.blocked,
-            "remainingAttempts": status.remaining_attempts,
-        }
+        return JSONResponse(
+            {
+                "ok": True,
+                "authorized": status.authorized,
+                "blocked": status.blocked,
+                "remainingAttempts": status.remaining_attempts,
+            }
+        )
 
-    @app.post("/api/auth/answer")
-    async def answer_gate(payload: GateAnswer, request: Request):
+    async def answer_gate(request: Request):
         require_same_origin(request)
+        payload = await _validated_json(request, GateAnswer.from_payload)
         if active_settings.configuration_errors:
             return _json_error("service_not_configured", 503)
         client_key = identity(request)
@@ -255,7 +248,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return response
 
-    @app.post("/api/auth/logout")
     async def logout(request: Request):
         require_same_origin(request)
         gate.logout(request.cookies.get(COOKIE_NAME))
@@ -263,18 +255,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.delete_cookie(COOKIE_NAME, path="/")
         return response
 
-    @app.get("/api/plan")
     async def plan(request: Request):
         require_access(request)
         payload = synchronizer.public_plan()
         if payload is None:
             return _json_error("plan_unavailable", 503)
-        return payload
+        return JSONResponse(payload)
 
-    @app.post("/api/feedback")
-    async def feedback(payload: FeedbackSubmission, request: Request):
+    async def feedback(request: Request):
         require_same_origin(request)
         require_access(request)
+        payload = await _validated_json(request, FeedbackSubmission.from_payload)
         if request.headers.get("X-VPlan-Request") != "feedback":
             return _json_error("invalid_request", 400)
         message = " ".join(payload.message.strip().split())
@@ -290,34 +281,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not database.consume_feedback_rate_limit():
             return _json_error("rate_limited", 429)
         database.save_feedback(message)
-        return {"ok": True}
+        return JSONResponse({"ok": True})
 
     dist_dir = active_settings.base_dir / "dist"
     public_dir = active_settings.base_dir / "public"
-    if (dist_dir / "assets").is_dir():
-        app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
 
-    @app.get("/vplan")
-    async def legacy_vplan_redirect():
+    async def legacy_vplan_redirect(_: Request):
         return RedirectResponse("/", status_code=308)
 
-    @app.get("/sw.js")
-    async def service_worker():
+    async def service_worker(_: Request):
         response = FileResponse(public_dir / "sw.js", media_type="application/javascript")
         response.headers["Cache-Control"] = "no-cache"
         response.headers["Service-Worker-Allowed"] = "/"
         return response
 
-    @app.get("/manifest.webmanifest")
-    async def manifest():
+    async def manifest(_: Request):
         response = FileResponse(
             public_dir / "manifest.webmanifest", media_type="application/manifest+json"
         )
         response.headers["Cache-Control"] = "no-cache"
         return response
 
-    @app.get("/i18n/{filename}")
-    async def i18n_file(filename: str):
+    async def i18n_file(request: Request):
+        filename = request.path_params["filename"]
         if not re.fullmatch(r"[a-z]{2}\.json|languages\.json", filename):
             raise HTTPException(status_code=404, detail="not_found")
         response = FileResponse(
@@ -326,19 +312,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["Cache-Control"] = "no-cache"
         return response
 
-    @app.get("/icons/{filename}")
-    async def icon(filename: str):
+    async def icon(request: Request):
+        filename = request.path_params["filename"]
         if not re.fullmatch(r"[A-Za-z0-9_.-]+\.(?:svg|png)", filename):
             raise HTTPException(status_code=404, detail="not_found")
         return FileResponse(public_dir / "icons" / filename)
 
-    @app.get("/{path:path}")
-    async def frontend(path: str):
+    async def frontend(_: Request):
         index_path = dist_dir / "index.html"
         if not index_path.is_file():
             return _json_error("frontend_not_built", 503)
         return FileResponse(index_path, media_type="text/html")
 
+    routes = [
+        Route("/healthz", health, methods=["GET"]),
+        Route("/api/auth/status", auth_status, methods=["GET"]),
+        Route("/api/auth/answer", answer_gate, methods=["POST"]),
+        Route("/api/auth/logout", logout, methods=["POST"]),
+        Route("/api/plan", plan, methods=["GET"]),
+        Route("/api/feedback", feedback, methods=["POST"]),
+        Route("/vplan", legacy_vplan_redirect, methods=["GET"]),
+        Route("/sw.js", service_worker, methods=["GET"]),
+        Route("/manifest.webmanifest", manifest, methods=["GET"]),
+        Route("/i18n/{filename}", i18n_file, methods=["GET"]),
+        Route("/icons/{filename}", icon, methods=["GET"]),
+        Route("/{path:path}", frontend, methods=["GET"]),
+    ]
+    if (dist_dir / "assets").is_dir():
+        routes.insert(
+            0,
+            Mount(
+                "/assets",
+                app=StaticFiles(directory=dist_dir / "assets"),
+                name="assets",
+            ),
+        )
+
+    app = Starlette(
+        routes=routes,
+        middleware=[
+            Middleware(BaseHTTPMiddleware, dispatch=security_headers),
+            Middleware(
+                TrustedHostMiddleware,
+                allowed_hosts=[
+                    active_settings.public_host,
+                    "localhost",
+                    "127.0.0.1",
+                    "[::1]",
+                    "testserver",
+                ],
+            ),
+        ],
+        exception_handlers={HTTPException: http_error_handler},
+        lifespan=lifespan,
+    )
+    app.state.settings = active_settings
+    app.state.database = database
+    app.state.gate = gate
+    app.state.synchronizer = synchronizer
+    app.state.stop_event = stop_event
     return app
 
 

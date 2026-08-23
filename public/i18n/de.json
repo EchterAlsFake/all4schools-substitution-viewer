@@ -293,7 +293,7 @@
   "translator.status.source_error": "Der deutsche Ausgangskatalog konnte nicht geladen werden. Bitte versuche es später erneut.",
   "credits.kicker": "Mitwirkende & Technik",
   "credits.tech": "Technik",
-  "credits.stack": "Svelte, TypeScript, Vite, Tailwind CSS, FastAPI und Python",
+  "credits.stack": "Svelte, TypeScript, Vite, Tailwind CSS, Starlette und Python",
   "credits.stack_label": "Verwendete Sprachen und Frameworks",
   "credits.programming": "Programmierung",
   "credits.hosting": "Hosting",
