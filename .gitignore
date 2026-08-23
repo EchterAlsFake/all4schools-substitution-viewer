@@ -1,0 +1,30 @@
+.env
+.env.*
+!.env.example
+.venv/
+.idea/
+node_modules/
+dist/
+data/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+coverage/
+playwright-report/
+test-results/
+*.log
+*.sqlite*
+example.json
+vplan.json
+lehrkraefte*.txt
+teacher-list*.txt
+cloudflared*.json
+tunnel-token*
+cert.pem
+*.private.pem
+*.private.key
+
+# The repository-root Python template ignores every directory named "lib".
+# This directory is application source and must remain versioned.
+!src/lib/
+!src/lib/**
