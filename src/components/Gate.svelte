@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ApiError, submitGateAnswer } from '../lib/api';
   import { t } from '../lib/i18n';
+  import { rememberGateAnswer } from '../lib/storage';
   import type { AuthStatus } from '../lib/types';
 
   export let status: AuthStatus;
@@ -16,6 +17,7 @@
     invalid = false;
     try {
       await submitGateAnswer(answer);
+      rememberGateAnswer(answer);
       onAuthorized();
     } catch (error) {
       if (error instanceof ApiError) {

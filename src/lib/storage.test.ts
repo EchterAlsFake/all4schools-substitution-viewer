@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { loadOverrides, loadPreferences, writeStorage } from './storage';
+import {
+  GATE_ANSWER_STORAGE_KEY,
+  forgetGateAnswer,
+  loadGateAnswer,
+  loadOverrides,
+  loadPreferences,
+  rememberGateAnswer,
+  writeStorage,
+} from './storage';
 
 
 describe('local preference compatibility', () => {
@@ -31,5 +39,18 @@ describe('local preference compatibility', () => {
   it('falls back safely when stored JSON is invalid', () => {
     localStorage.setItem('vplan-preferences', '{broken');
     expect(loadPreferences()).toEqual({ enabled: false, grade: '', classLetter: '', courses: [] });
+  });
+
+  it('remembers and forgets a validated gate answer', () => {
+    expect(rememberGateAnswer('  ROOM42  ')).toBe(true);
+    expect(loadGateAnswer()).toBe('ROOM42');
+    expect(forgetGateAnswer()).toBe(true);
+    expect(localStorage.getItem(GATE_ANSWER_STORAGE_KEY)).toBeNull();
+  });
+
+  it('discards malformed gate answers from local storage', () => {
+    localStorage.setItem(GATE_ANSWER_STORAGE_KEY, JSON.stringify(''));
+    expect(loadGateAnswer()).toBeNull();
+    expect(localStorage.getItem(GATE_ANSWER_STORAGE_KEY)).toBeNull();
   });
 });

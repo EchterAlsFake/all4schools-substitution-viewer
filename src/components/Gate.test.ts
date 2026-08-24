@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import Gate from './Gate.svelte';
+import { GATE_ANSWER_STORAGE_KEY } from '../lib/storage';
 
 
 afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => localStorage.clear());
 
 it('uses a labelled form and unlocks only after a successful backend response', async () => {
   vi.stubGlobal(
@@ -27,4 +29,5 @@ it('uses a labelled form and unlocks only after a successful backend response', 
   await fireEvent.click(screen.getByRole('button', { name: 'gate.submit' }));
 
   await waitFor(() => expect(onAuthorized).toHaveBeenCalledOnce());
+  expect(JSON.parse(localStorage.getItem(GATE_ANSWER_STORAGE_KEY) || 'null')).toBe('ROOM42');
 });

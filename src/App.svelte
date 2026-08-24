@@ -7,8 +7,10 @@
   import PlanApp from './components/PlanApp.svelte';
   import SiteHeader from './components/SiteHeader.svelte';
   import TranslatorPage from './components/TranslatorPage.svelte';
+  import { restoreStoredAccess } from './lib/access';
   import { ApiError, getAuthStatus, logout } from './lib/api';
   import { i18nReady, initializeI18n, t } from './lib/i18n';
+  import { forgetGateAnswer } from './lib/storage';
   import type { AuthStatus } from './lib/types';
 
   const route = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -27,7 +29,7 @@
 
   async function refreshAuth(): Promise<void> {
     try {
-      auth = await getAuthStatus();
+      auth = await restoreStoredAccess(await getAuthStatus());
       authServiceError = false;
     } catch (error) {
       authServiceError = true;
@@ -40,6 +42,7 @@
   }
 
   async function resetAccess(): Promise<void> {
+    forgetGateAnswer();
     await logout().catch(() => undefined);
     window.location.reload();
   }

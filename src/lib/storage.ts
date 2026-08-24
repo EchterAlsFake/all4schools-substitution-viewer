@@ -1,5 +1,7 @@
 import type { Preferences, SubjectOverrides } from './types';
 
+export const GATE_ANSWER_STORAGE_KEY = 'vplan-gate-answer';
+
 export const defaultPreferences: Preferences = {
   enabled: false,
   grade: '',
@@ -23,6 +25,37 @@ export function writeStorage(key: string, value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+export function removeStorage(key: string): boolean {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadGateAnswer(): string | null {
+  const stored = readStorage<unknown>(GATE_ANSWER_STORAGE_KEY, null);
+  if (
+    typeof stored === 'string'
+    && stored.trim().length > 0
+    && stored.length <= 32
+    && !Array.from(stored).some((character) => character.charCodeAt(0) < 32)
+  ) {
+    return stored;
+  }
+  removeStorage(GATE_ANSWER_STORAGE_KEY);
+  return null;
+}
+
+export function rememberGateAnswer(answer: string): boolean {
+  return writeStorage(GATE_ANSWER_STORAGE_KEY, answer.trim());
+}
+
+export function forgetGateAnswer(): boolean {
+  return removeStorage(GATE_ANSWER_STORAGE_KEY);
 }
 
 export function loadPreferences(): Preferences {

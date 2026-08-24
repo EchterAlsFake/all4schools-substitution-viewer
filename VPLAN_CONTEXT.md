@@ -1,6 +1,6 @@
 # Vertretungsplan – Kontext für zukünftige Coding-Agents
 
-> Stand: 23. August 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
+> Stand: 24. August 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
 > Vor VPlan-Änderungen immer diese Datei vollständig lesen und `git status` prüfen.
 
 ## 1. Produkt und Abgrenzung
@@ -30,6 +30,7 @@ Frontend:
 | `src/components/SiteHeader.svelte` | Kopfbereich, Sprache, Theme und responsive Tagesnavigation |
 | `src/components/LegalPage.svelte` | Datenschutz und Verantwortlicher |
 | `src/components/TranslatorPage.svelte` | rein lokaler Übersetzungseditor |
+| `src/lib/access.ts` | Wiederherstellung der Zugangssitzung mit der lokal gemerkten Antwort |
 | `src/lib/api.ts` | typisierter Zugriff auf die eigene Starlette-API |
 | `src/lib/day-navigation.ts` | flüchtige Verbindung zwischen Plan und Tagesnavigation im Header |
 | `src/lib/refresh-schedule.ts` | Berliner Zeitfenster für die automatische Cache-Aktualisierung |
@@ -174,6 +175,8 @@ Verhalten:
 - `CF-Connecting-IP` wird nur vertraut, wenn die direkte Socket-Gegenstelle Loopback ist;
 - fehlt hinter dem erwarteten Tunnel die vertrauenswürdige IP, schlägt der Dienst geschlossen fehl;
 - die erfolgreiche Sitzung verwendet ein zufälliges `HttpOnly`, `Secure`, `SameSite=Strict`-Cookie;
+- nach einer erfolgreichen Prüfung merkt sich der Browser die richtige Antwort lokal und prüft sie
+  bei einer fehlenden Sitzung erneut serverseitig; eine abgelehnte Antwort wird lokal gelöscht;
 - ein gesperrter Client bleibt auch mit altem Cookie gesperrt;
 - schreibende Endpunkte prüfen `Origin`/`Sec-Fetch-Site` zusätzlich.
 
@@ -219,6 +222,8 @@ Die Svelte-App behält die bisherigen Funktionen:
 - lokale Fachnamen, optionale lokale Lehrernamen und acht feste Akzentfarben;
 - Dark/Light Mode, Deutsch/Englisch, PWA-Installation, Credits und Changelog;
 - verpflichtender Disclaimer mit Checkbox beim ersten Planaufruf;
+- lokal gemerkte richtige Antwort auf die Zugangsfrage, die bei fehlender Sitzung automatisch erneut
+  serverseitig geprüft und bei Ablehnung oder über „Zugang zurücksetzen“ gelöscht wird;
 - Verantwortlicher, Datenschutz und ein rein lokaler Übersetzungseditor;
 - externer GitHub-Link zum öffentlichen Quellcode ohne eingebettete GitHub-Inhalte;
 - freiwillige Fehlermeldung mit Datenschutzbestätigung.
@@ -235,10 +240,13 @@ Lokale Schlüssel:
 | `vplan-preferences` | Aktivierung, Jahrgang, Klasse und Kursauswahl |
 | `vplan-subject-overrides` | lokale Namen, Lehrernamen und Farbe je Fachschlüssel |
 | `vplan-disclaimer-accepted-v1` | Bestätigung des Nutzungshinweises |
+| `vplan-gate-answer` | richtige Antwort zur Wiederherstellung einer fehlenden Zugangssitzung |
 
-Diese Daten werden nicht an den Server gesendet. Speicherfehler dürfen die Grundfunktion nicht
-unbenutzbar machen. Der Service Worker speichert nur die statische App-Shell, nie `/api/*` oder
-einen Plan. Alte Worker mit Scope `/vplan` werden beim Start entfernt.
+Die lokal gemerkte Zugangsantwort wird nur dann erneut an den Ursprungsserver übertragen, wenn das
+Sitzungscookie fehlt oder nicht mehr gültig ist. Alle anderen lokalen Daten werden nicht an den
+Server gesendet. Speicherfehler dürfen die Grundfunktion nicht unbenutzbar machen. Der Service
+Worker speichert nur die statische App-Shell, nie `/api/*` oder einen Plan. Alte Worker mit Scope
+`/vplan` werden beim Start entfernt.
 
 ## 8. Datenbank und Datenschutz
 
