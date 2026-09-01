@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import type { PlanResponse } from '../lib/types';
+import { TRANSPARENCY_NOTICE_STORAGE_KEY } from '../lib/storage';
 import PlanApp from './PlanApp.svelte';
 
 
@@ -34,6 +35,7 @@ const plan: PlanResponse = {
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('vplan-disclaimer-accepted-v1', JSON.stringify(true));
+  localStorage.setItem(TRANSPARENCY_NOTICE_STORAGE_KEY, JSON.stringify(true));
   vi.stubGlobal(
     'fetch',
     vi.fn().mockImplementation(() => Promise.resolve(
@@ -48,6 +50,7 @@ beforeEach(() => {
   });
   HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
     this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
   });
 });
 
@@ -88,4 +91,31 @@ it('uses explicit light and dark surfaces for personal-plan selects', async () =
   const selects = within(dialog).getAllByRole('combobox');
   expect(selects).toHaveLength(2);
   expect(selects.every((select) => select.classList.contains('form-select'))).toBe(true);
+});
+
+it('shows and remembers the transparency notice only once', async () => {
+  localStorage.removeItem(TRANSPARENCY_NOTICE_STORAGE_KEY);
+  const firstRender = render(PlanApp);
+
+  const dialog = await screen.findByRole('dialog', { name: 'transparency.title' });
+  expect(JSON.parse(localStorage.getItem(TRANSPARENCY_NOTICE_STORAGE_KEY) || 'false')).toBe(true);
+  await fireEvent.click(within(dialog).getByRole('button', { name: 'transparency.close' }));
+  expect(screen.queryByRole('dialog', { name: 'transparency.title' })).not.toBeInTheDocument();
+
+  firstRender.unmount();
+  render(PlanApp);
+  expect(await screen.findByRole('heading', { name: 'Spo' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: 'transparency.title' })).not.toBeInTheDocument();
+});
+
+it('opens the mandatory disclaimer after the transparency notice closes', async () => {
+  localStorage.removeItem(TRANSPARENCY_NOTICE_STORAGE_KEY);
+  localStorage.removeItem('vplan-disclaimer-accepted-v1');
+  render(PlanApp);
+
+  const transparency = await screen.findByRole('dialog', { name: 'transparency.title' });
+  expect(screen.queryByRole('dialog', { name: 'disclaimer.title' })).not.toBeInTheDocument();
+  await fireEvent.click(within(transparency).getByRole('button', { name: 'transparency.close' }));
+
+  expect(await screen.findByRole('dialog', { name: 'disclaimer.title' })).toBeInTheDocument();
 });

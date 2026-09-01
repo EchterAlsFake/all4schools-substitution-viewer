@@ -1,6 +1,6 @@
 # Vertretungsplan – Kontext für zukünftige Coding-Agents
 
-> Stand: 24. August 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
+> Stand: 1. September 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
 > Vor VPlan-Änderungen immer diese Datei vollständig lesen und `git status` prüfen.
 
 ## 1. Produkt und Abgrenzung
@@ -12,6 +12,10 @@ Repository und läuft unabhängig vom kommerziellen Flask-Server:
 - kommerzieller Server: Port 8000;
 - VPlan: Starlette/Uvicorn auf Port 8001;
 - öffentliche VPlan-Route: `https://vplan.echteralsfake.me/`;
+- der öffentliche Einstieg läuft über einen Relay-Server von Privex in Schweden; Anwendung,
+  Plan-Cache und Datenbank verbleiben auf der physischen Ursprungshardware in Deutschland;
+- Cloudflare ist nicht mehr Teil der Inhaltsübertragung; am öffentlichen Einstieg ist natives
+  Encrypted Client Hello aktiviert, Post-Quanten-Verschlüsselung jedoch noch nicht;
 - der alte Pfad `/vplan` leitet innerhalb des neuen Dienstes dauerhaft auf `/` um;
 - `main.py` enthält keine VPlan-Routen, Synchronisation, Modelle oder Assets mehr.
 
@@ -77,6 +81,8 @@ Explizite Längenlimits, Typ- und Schema-Prüfung
 atomarer, bereits bereinigter JSON-Cache (nur bei Inhaltsänderung)
   ▼
 GET /api/plan hinter Zugangsschranke
+  ▼
+verschlüsselte öffentliche Verbindung über Privex-Relay in Schweden
   ▼
 Svelte-Oberfläche; persönliche Auswahl bleibt im Browser
 ```
@@ -172,8 +178,11 @@ Verhalten:
 - nach drei Fehlern ist die öffentliche Client-IP bis zum Prozessneustart gesperrt;
 - Sperren, Versuche und Sitzungen existieren ausschließlich im RAM;
 - die rohe IP wird sofort mit einem zufälligen, pro Start neuen HMAC-Schlüssel pseudonymisiert;
-- `CF-Connecting-IP` wird nur vertraut, wenn die direkte Socket-Gegenstelle Loopback ist;
-- fehlt hinter dem erwarteten Tunnel die vertrauenswürdige IP, schlägt der Dienst geschlossen fehl;
+- der weiterhin aus Kompatibilitätsgründen `CF-Connecting-IP` genannte Header wird nur vertraut,
+  wenn die direkte Socket-Gegenstelle der lokale Loopback-Proxy ist; Cloudflare selbst ist daran
+  nicht mehr beteiligt;
+- fehlt hinter dem erwarteten Relay-/Tunnel-Aufbau die vertrauenswürdige IP, schlägt der Dienst
+  geschlossen fehl;
 - die erfolgreiche Sitzung verwendet ein zufälliges `HttpOnly`, `Secure`, `SameSite=Strict`-Cookie;
 - nach einer erfolgreichen Prüfung merkt sich der Browser die richtige Antwort lokal und prüft sie
   bei einer fehlenden Sitzung erneut serverseitig; eine abgelehnte Antwort wird lokal gelöscht;
@@ -222,6 +231,9 @@ Die Svelte-App behält die bisherigen Funktionen:
 - lokale Fachnamen, optionale lokale Lehrernamen und acht feste Akzentfarben;
 - Dark/Light Mode, Deutsch/Englisch, PWA-Installation, Credits und Changelog;
 - verpflichtender Disclaimer mit Checkbox beim ersten Planaufruf;
+- einmaliger deutscher Transparenzhinweis zur Relay- und Hosting-Änderung; beim Anzeigen wird eine
+  lokale Versionsmarke gesetzt, danach wird der Hinweis in diesem Browserprofil nicht erneut
+  geöffnet (nach Löschen des Browserspeichers erscheint er wieder);
 - lokal gemerkte richtige Antwort auf die Zugangsfrage, die bei fehlender Sitzung automatisch erneut
   serverseitig geprüft und bei Ablehnung oder über „Zugang zurücksetzen“ gelöscht wird;
 - Verantwortlicher, Datenschutz und ein rein lokaler Übersetzungseditor;
@@ -240,13 +252,14 @@ Lokale Schlüssel:
 | `vplan-preferences` | Aktivierung, Jahrgang, Klasse und Kursauswahl |
 | `vplan-subject-overrides` | lokale Namen, Lehrernamen und Farbe je Fachschlüssel |
 | `vplan-disclaimer-accepted-v1` | Bestätigung des Nutzungshinweises |
+| `vplan-transparency-notice-seen-v1` | lokale Marke für den bereits angezeigten Transparenzhinweis |
 | `vplan-gate-answer` | richtige Antwort zur Wiederherstellung einer fehlenden Zugangssitzung |
 
 Die lokal gemerkte Zugangsantwort wird nur dann erneut an den Ursprungsserver übertragen, wenn das
-Sitzungscookie fehlt oder nicht mehr gültig ist. Alle anderen lokalen Daten werden nicht an den
-Server gesendet. Speicherfehler dürfen die Grundfunktion nicht unbenutzbar machen. Der Service
-Worker speichert nur die statische App-Shell, nie `/api/*` oder einen Plan. Alte Worker mit Scope
-`/vplan` werden beim Start entfernt.
+Sitzungscookie fehlt oder nicht mehr gültig ist. Alle anderen lokalen Daten einschließlich der
+Transparenzhinweis-Marke werden nicht an den Server gesendet. Speicherfehler dürfen die
+Grundfunktion nicht unbenutzbar machen. Der Service Worker speichert nur die statische App-Shell,
+nie `/api/*` oder einen Plan. Alte Worker mit Scope `/vplan` werden beim Start entfernt.
 
 ## 8. Datenbank und Datenschutz
 
@@ -303,7 +316,8 @@ Alle VPlan-Werte gehören in die lokale `.env`:
 - `VPLAN_SCHOOL_ID` – erforderliche positive ID;
 - `VPLAN_GATE_ANSWERS` – erforderliche, kommaseparierte Antworten;
 - `VPLAN_PUBLIC_HOST` – erwarteter öffentlicher Host;
-- `VPLAN_TRUST_CLOUDFLARE_IP` – in Tunnel-Produktion `true`;
+- `VPLAN_TRUST_CLOUDFLARE_IP` – historisch benannte Option für den nur von Loopback vertrauten
+  `CF-Connecting-IP`-Header; beim produktiven Relay-/Tunnel-Aufbau `true`;
 - `VPLAN_SECURE_COOKIE` – in HTTPS-Produktion `true`;
 - `VPLAN_UPGRADE_INSECURE_REQUESTS` – CSP-HTTPS-Hochstufung, in Produktion `true`;
 - `VPLAN_SYNC_ENABLED` – Hintergrundabruf, standardmäßig `true`;
@@ -330,10 +344,14 @@ uv sync --all-groups
 uv run uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log
 ```
 
-Cloudflare/Tunnel muss `vplan.echteralsfake.me` auf `http://localhost:8001` leiten und den
-originalen Host sowie `CF-Connecting-IP` bis zum lokalen Loopback-Ursprung erhalten. Der
-kommerzielle Dienst bleibt auf Port 8000. `curl-cffi`-HTTP/3 auf Android/Termux ist
-plattformabhängig; der kontrollierte HTTP/2-Fallback gehört deshalb zum Betriebsdesign.
+Der öffentliche Privex-Relay in Schweden muss `vplan.echteralsfake.me` verschlüsselt zum Tunnel auf
+der deutschen Ursprungshardware weiterleiten. Der lokale Proxy leitet auf
+`http://localhost:8001`, erhält den originalen Host und setzt die ursprüngliche Besucheradresse im
+historisch benannten `CF-Connecting-IP`-Header. Dieser Header darf den Backendprozess nur über
+Loopback erreichen. TLS und natives Encrypted Client Hello werden am öffentlichen Einstieg
+konfiguriert; Post-Quanten-Verschlüsselung ist noch nicht aktiv. Der kommerzielle Dienst bleibt auf
+Port 8000. `curl-cffi`-HTTP/3 auf Android/Termux ist plattformabhängig; der kontrollierte
+HTTP/2-Fallback gehört deshalb zum Betriebsdesign.
 
 ## 11. Pflichtprüfungen
 

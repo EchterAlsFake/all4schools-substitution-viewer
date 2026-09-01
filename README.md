@@ -65,15 +65,19 @@ uv run uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-acc
 ```
 
 Genau ein Worker ist erforderlich, weil Fehlversuche, IP-Sperren und Sitzungen absichtlich nur
-bis zum Neustart im Arbeitsspeicher existieren. Der öffentliche Cloudflare-Tunnel-Eintrag für
-`vplan.echteralsfake.me` muss auf `http://localhost:8001` zeigen und `CF-Connecting-IP` bis zum
-lokalen Loopback-Ursprung erhalten. Der übrige Server bleibt auf Port 8000.
+bis zum Neustart im Arbeitsspeicher existieren. Der öffentliche Einstieg für
+`vplan.echteralsfake.me` läuft über einen Privex-Relay in Schweden und von dort verschlüsselt zur
+physischen Ursprungshardware in Deutschland. Der lokale Proxy leitet auf
+`http://localhost:8001`, erhält den originalen Host und setzt die ursprüngliche Besucheradresse im
+historisch benannten `CF-Connecting-IP`-Header. Cloudflare ist nicht mehr an der
+Inhaltsübertragung beteiligt. Natives Encrypted Client Hello ist am öffentlichen Einstieg aktiv;
+Post-Quanten-Verschlüsselung ist noch nicht aktiv. Der übrige Server bleibt auf Port 8000.
 
 ## Lokaler LAN-Test
 
 Für einen direkten HTTP-Test von einem anderen Gerät im lokalen Netz müssen in `.env` der lokale
-Host erlaubt und die ausschließlich für HTTPS beziehungsweise den Cloudflare-Tunnel vorgesehenen
-Optionen vorübergehend deaktiviert werden:
+Host erlaubt und die ausschließlich für HTTPS beziehungsweise den öffentlichen Relay-/Tunnelweg
+vorgesehenen Optionen vorübergehend deaktiviert werden:
 
 ```env
 VPLAN_PUBLIC_HOST=192.168.0.20

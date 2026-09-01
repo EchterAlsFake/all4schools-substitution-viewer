@@ -37,3 +37,23 @@ def test_real_gate_answers_are_not_in_tracked_catalogs():
     )
     for answer in Settings.load().gate_answers:
         assert answer not in combined
+
+
+def test_transparency_notice_remains_german_in_every_catalog():
+    languages = json.loads((I18N_DIR / "languages.json").read_text(encoding="utf-8"))
+    notice_keys = {
+        "transparency.title",
+        "transparency.architecture",
+        "transparency.relay",
+        "transparency.costs",
+        "transparency.close",
+    }
+    source = json.loads((I18N_DIR / "de.json").read_text(encoding="utf-8"))
+
+    for language in languages["languages"]:
+        catalog = json.loads(
+            (I18N_DIR / f"{language['code']}.json").read_text(encoding="utf-8")
+        )
+        assert {key: catalog[key] for key in notice_keys} == {
+            key: source[key] for key in notice_keys
+        }

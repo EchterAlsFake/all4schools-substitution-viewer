@@ -32,16 +32,17 @@
         ['privacy.local.title', 'privacy.local.text'],
         ['privacy.redaction.title', 'privacy.redaction.text'],
         ['privacy.feedback.title', 'privacy.feedback.text'],
-        ['privacy.cloudflare.title', 'privacy.cloudflare.text'],
+        ['privacy.infrastructure.title', 'privacy.infrastructure.text'],
         ['privacy.github.title', 'privacy.github.text'],
         ['privacy.rights.title', 'privacy.rights.text'],
       ] as section (section[0])}
         <section>
           <h2 class="text-xl font-bold">{$t(section[0])}</h2>
           <p class="mt-2 leading-relaxed text-slate-700 dark:text-zinc-300">{$t(section[1])}</p>
-          {#if section[0] === 'privacy.cloudflare.title'}
-            <p class="mt-3 leading-relaxed text-slate-700 dark:text-zinc-300">{$t('privacy.cloudflare.transfer')}</p>
-            <a class="mt-3 inline-block text-violet-600 underline dark:text-violet-400" href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener noreferrer">{$t('privacy.cloudflare_link')}</a>
+          {#if section[0] === 'privacy.infrastructure.title'}
+            <p class="mt-3 leading-relaxed text-slate-700 dark:text-zinc-300">{$t('privacy.infrastructure.encryption')}</p>
+            <p class="mt-3 leading-relaxed text-slate-700 dark:text-zinc-300">{$t('privacy.infrastructure.transfer')}</p>
+            <a class="mt-3 inline-block text-violet-600 underline dark:text-violet-400" href="https://www.privex.io/privacy/" target="_blank" rel="noopener noreferrer">{$t('privacy.hosting_link')}</a>
           {/if}
         </section>
       {/each}

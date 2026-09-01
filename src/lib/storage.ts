@@ -1,6 +1,7 @@
 import type { Preferences, SubjectOverrides } from './types';
 
 export const GATE_ANSWER_STORAGE_KEY = 'vplan-gate-answer';
+export const TRANSPARENCY_NOTICE_STORAGE_KEY = 'vplan-transparency-notice-seen-v1';
 
 export const defaultPreferences: Preferences = {
   enabled: false,

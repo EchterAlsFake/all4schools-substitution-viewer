@@ -11,6 +11,7 @@
     loadOverrides,
     loadPreferences,
     readStorage,
+    TRANSPARENCY_NOTICE_STORAGE_KEY,
     writeStorage,
   } from '../lib/storage';
   import type {
@@ -34,6 +35,7 @@
   let feedbackDialog: HTMLDialogElement;
   let subjectDialog: HTMLDialogElement;
   let disclaimerDialog: HTMLDialogElement;
+  let transparencyDialog: HTMLDialogElement;
   let feedbackMessage = '';
   let feedbackConfirmed = false;
   let feedbackStatus = '';
@@ -44,6 +46,7 @@
   let editingOverride: SubjectOverride = { name: '', teacher: '', color: '' };
   let installStatus = '';
   let storageNotice = '';
+  let transparencyNoticeSeen = readStorage<unknown>(TRANSPARENCY_NOTICE_STORAGE_KEY, false) === true;
 
   const colors: Record<string, string> = {
     violet: 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/25',
@@ -90,6 +93,7 @@
   });
 
   onMount(() => {
+    queueMicrotask(showInitialNotice);
     void refreshPlan();
     const refreshTimer = window.setInterval(() => {
       if (isPlanRefreshWindow()) void refreshPlan(true);
@@ -111,9 +115,7 @@
       } else if (previousVersion === nextPlan.version) {
         // Keep the manually selected tab when content did not change.
       }
-      if (!readStorage('vplan-disclaimer-accepted-v1', false)) {
-        queueMicrotask(() => disclaimerDialog?.showModal());
-      }
+      queueMicrotask(showInitialNotice);
     } catch (error) {
       loadError = true;
       if (error instanceof ApiError && ['authentication_required', 'ip_blocked'].includes(error.code)) {
@@ -285,6 +287,29 @@
     disclaimerDialog.close();
   }
 
+  function showInitialNotice(): void {
+    if (!transparencyNoticeSeen) {
+      if (!transparencyDialog) return;
+      transparencyDialog.showModal();
+      transparencyNoticeSeen = true;
+      if (!writeStorage(TRANSPARENCY_NOTICE_STORAGE_KEY, true)) {
+        storageNotice = $t('storage.unavailable');
+      }
+      return;
+    }
+    showDisclaimer();
+  }
+
+  function showDisclaimer(): void {
+    if (
+      !transparencyDialog?.open
+      && !readStorage('vplan-disclaimer-accepted-v1', false)
+      && !disclaimerDialog?.open
+    ) {
+      disclaimerDialog?.showModal();
+    }
+  }
+
   async function installApp(): Promise<void> {
     if (window.deferredInstallPrompt) {
       await window.deferredInstallPrompt.prompt();
@@ -418,6 +443,16 @@
     {#if feedbackStatus}<p class="mt-4 font-semibold" role="status">{$t(feedbackStatus)}</p>{/if}
     <div class="mt-6 flex justify-end gap-3"><button type="button" class="rounded-xl border border-slate-300 px-4 py-2 font-bold dark:border-zinc-700" on:click={() => feedbackDialog.close()}>{$t('common.cancel')}</button><button type="submit" class="rounded-xl bg-violet-600 px-4 py-2 font-bold text-white disabled:opacity-60" disabled={feedbackSending}>{$t(feedbackSending ? 'feedback.sending' : 'feedback.send')}</button></div>
   </form>
+</dialog>
+
+<dialog bind:this={transparencyDialog} class="m-auto w-[calc(100%-2rem)] max-w-2xl rounded-3xl bg-white p-0 text-slate-950 shadow-2xl dark:bg-zinc-900 dark:text-white" aria-labelledby="transparency-title" on:close={showDisclaimer}>
+  <div class="max-h-[90vh] overflow-y-auto p-6 sm:p-8">
+    <h2 id="transparency-title" class="text-3xl font-bold">{$t('transparency.title')}</h2>
+    <p class="mt-5 leading-relaxed text-slate-700 dark:text-zinc-300">{$t('transparency.architecture')}</p>
+    <p class="mt-4 leading-relaxed text-slate-700 dark:text-zinc-300">{$t('transparency.relay')}</p>
+    <p class="mt-4 font-semibold text-slate-800 dark:text-zinc-200">{$t('transparency.costs')}</p>
+    <button type="button" class="mt-6 w-full rounded-xl bg-violet-600 px-4 py-3 font-bold text-white" on:click={() => transparencyDialog.close()}>{$t('transparency.close')}</button>
+  </div>
 </dialog>
 
 <dialog bind:this={disclaimerDialog} class="m-auto w-[calc(100%-2rem)] max-w-2xl rounded-3xl bg-white p-0 text-slate-950 shadow-2xl dark:bg-zinc-900 dark:text-white" aria-labelledby="disclaimer-title" on:cancel={(event) => event.preventDefault()}>
