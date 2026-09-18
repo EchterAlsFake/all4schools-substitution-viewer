@@ -29,7 +29,8 @@ Starlette-Backend.
 ```bash
 cp .env.example .env
 npm ci
-uv sync --all-groups
+uv venv --python 3.12
+uv pip install --python .venv/bin/python --upgrade -r pyproject.toml --group dev
 ```
 
 In `.env` müssen mindestens die drei autorisierten API-Endpunkte, API-Token, School-ID und die
@@ -37,14 +38,20 @@ akzeptierten Antworten gesetzt werden. Die Datei ist ignoriert und darf nicht co
 
 Antwortet die offizielle Plan-API mit `401` oder `403`, ruft das Backend einmalig den in
 `VPLAN_API_REFRESH_URL` konfigurierten Refresh-Endpunkt mit dem bisherigen Bearer-Token auf. Ein
-syntaktisch gültiges neues JWT ersetzt `VPLAN_API_TOKEN` atomar in `.env`; anschließend wird der
+syntaktisch gültiges neues JWT wird atomar in `data/api-token` gespeichert; anschließend wird der
 Planabruf genau einmal wiederholt. Scheitert der Refresh oder wird der neue Token weiterhin
 abgewiesen, erstellt das Backend über `VPLAN_API_AUTH_URL` und die optionalen Werte `USERNAME`
 und `PASSWORD` eine neue `curl-cffi`-Session. Cookies werden nur im Arbeitsspeicher gehalten; ein
-in Antwort oder Autorisierungsheader enthaltenes JWT wird ebenfalls atomar in `.env` übernommen.
+in Antwort oder Autorisierungsheader enthaltenes JWT wird ebenfalls atomar in `data/api-token` übernommen.
 Fehler werden ohne Zugangsdaten oder Token-Inhalte im Serverterminal gemeldet. Damit der erneuerte
-Token einen Neustart überlebt, sollte er ausschließlich aus dieser lokalen `.env` und nicht
-zusätzlich aus einer extern gesetzten, veralteten Umgebungsvariable kommen.
+Token einen Neustart überlebt, hat ein gültiger gespeicherter Token Vorrang vor dem
+Bootstrap-Token aus `.env`. Die Datei liegt unter `VPLAN_DATA_DIR`, ist nur für den Dienst
+zugänglich (0600) und wird bei Erneuerung atomar ersetzt. Fehlende oder ungültige gespeicherte
+Token fallen auf den Bootstrap-Token zurück; Lesefehler führen zu einem Konfigurationsfehler.
+Zum manuellen Zurücksetzen den Dienst stoppen, `data/api-token` löschen, `.env` aktualisieren
+und neu starten. `.env` und Anwendungscode bleiben für den Dienst schreibgeschützt.
+
+Die Produktionsinstallation und Wartung sind in `deploy/OPERATIONS.md` beschrieben.
 
 Die offizielle Plan-API wird zwischen 06:00 und 22:00 Uhr im Abstand von mindestens fünf Minuten
 abgerufen. Von 22:00 bis 06:00 Uhr finden keine Upstream-Abrufe statt; ein in dieser Zeit
@@ -61,7 +68,7 @@ Produktions-Build und Serverstart:
 
 ```bash
 npm run build
-uv run uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log
+.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log --no-proxy-headers
 ```
 
 Genau ein Worker ist erforderlich, weil Fehlversuche, IP-Sperren und Sitzungen absichtlich nur
@@ -72,6 +79,11 @@ physischen Ursprungshardware in Deutschland. Der lokale Proxy leitet auf
 historisch benannten `CF-Connecting-IP`-Header. Cloudflare ist nicht mehr an der
 Inhaltsübertragung beteiligt. Natives Encrypted Client Hello ist am öffentlichen Einstieg aktiv;
 Post-Quanten-Verschlüsselung ist noch nicht aktiv. Der übrige Server bleibt auf Port 8000.
+
+Ein selbst gehosteter Aufruf an `/__eaf/visit` liefert ausschließlich eine ungefähre tägliche
+Gesamtzählung. Die Verbindungsadresse wird nicht protokolliert, sondern nur kurzzeitig mit einem
+geheimen Tagesbezug in einen nicht rückrechenbaren Wert umgewandelt. Es werden keine Analyse-Cookies
+oder externen Analysedienste verwendet.
 
 ## Lokaler LAN-Test
 
@@ -116,7 +128,7 @@ Redaktionsliste importiert werden. Unterstützt werden Einträge wie `Frau Beisp
 Datenbank nicht gleichzeitig durch zwei Prozesse verändert werden:
 
 ```bash
-uv run python -m backend.manage import-teachers /absoluter/pfad/lehrkraefte.txt
+.venv/bin/python -m backend.manage import-teachers /absoluter/pfad/lehrkraefte.txt
 ```
 
 Der Befehl prüft die gesamte Datei vor dem Schreiben, dedupliziert die Einträge, speichert
@@ -151,8 +163,8 @@ npm run check
 npm run lint
 npm test
 npm run build
-UV_CACHE_DIR=/tmp/vplan-uv-cache uv run pytest
-uv run python -m py_compile backend/*.py tests/*.py
+.venv/bin/python -m pytest
+.venv/bin/python -m py_compile backend/*.py tests/*.py
 ```
 
 Die vollständigen Architektur- und Datenschutzverträge stehen in `VPLAN_CONTEXT.md`.

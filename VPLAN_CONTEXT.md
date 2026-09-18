@@ -1,6 +1,6 @@
 # Vertretungsplan – Kontext für zukünftige Coding-Agents
 
-> Stand: 1. September 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
+> Stand: 5. September 2026. Dieses Dokument beschreibt nur den eigenständigen Vertretungsplan.
 > Vor VPlan-Änderungen immer diese Datei vollständig lesen und `git status` prüfen.
 
 ## 1. Produkt und Abgrenzung
@@ -59,7 +59,8 @@ Build und Laufzeit:
 
 - Vite, TypeScript, Svelte 5 und Tailwind CSS 4;
 - Starlette, Uvicorn, SQLAlchemy und `curl-cffi`;
-- `package-lock.json` und `uv.lock` sind reproduzierbare Lockfiles;
+- `package-lock.json` fixiert den Frontend-Build; Python-Abhängigkeiten werden auf Betreiberwunsch
+  mit `uv pip install --upgrade -r pyproject.toml` ohne Verwendung von `uv.lock` installiert;
 - `node_modules/`, `dist/`, `.venv/`, `.env` und `data/` bleiben unversioniert.
 
 ## 3. Datenfluss
@@ -67,7 +68,7 @@ Build und Laufzeit:
 ```text
 offizielle Substitution-API
   │  Bearer-Token; POST; HTTP/3; Chrome-Impersonation
-  ├─ bei 401/403: Refresh-API → neues JWT atomar in .env → erneuter Abruf
+  ├─ bei 401/403: Refresh-API → neues JWT atomar in data/api-token → erneuter Abruf
   └─ falls weiter unautorisiert: JwtAuth → neue RAM-Session → letzter Abruf
   ▼
 Explizite Längenlimits, Typ- und Schema-Prüfung
@@ -95,11 +96,11 @@ dafür absichtlich keine fest eingebauten Defaults. Die echten Endpunkte stehen 
 Nur `401` und `403` lösen einen Refresh aus. Der aktuelle Bearer-Token wird dabei mit
 `curl-cffi`, Chrome-Impersonation und demselben HTTP/3-/HTTP/2-Fallback an den Refresh-Endpunkt
 gesendet. Das Ergebnis muss ein syntaktisch gültiges JWT sein. Es ersetzt
-`VPLAN_API_TOKEN` atomar in der lokalen `.env`; danach folgt ein erneuter Planabruf. Scheitert der
+den gespeicherten Token atomar in `data/api-token`; danach folgt ein erneuter Planabruf. Scheitert der
 Refresh oder wird auch der erneuerte Token mit `401`/`403` abgewiesen, wird genau eine neue
 `curl-cffi`-Session erstellt und `JwtAuth` mit `Username`, `Password` und `Pin: null` aufgerufen.
 Cookies verbleiben in dieser RAM-Session. Ein syntaktisch gültiges JWT aus Antwort oder
-Autorisierungsheader ersetzt ebenfalls atomar `VPLAN_API_TOKEN`; bei einer reinen Cookie-Sitzung
+Autorisierungsheader ersetzt ebenfalls atomar `data/api-token`; bei einer reinen Cookie-Sitzung
 wird der abgelaufene Bearer beim letzten Planabruf weggelassen. Fehler beim Refresh, Login,
 Speichern oder letzten Abruf werden ohne Geheimnisse im Terminal protokolliert und der letzte
 gültige Cache bleibt erhalten.
@@ -214,7 +215,11 @@ deaktiviert. `upgrade-insecure-requests` ist in Produktion aktiv, kann aber übe
 werden, damit Browser die Assets nicht gegen den reinen HTTP-Uvicorn-Port auf HTTPS hochstufen.
 Der Uvicorn-Zugriffslog bleibt im Produktionskommando ausgeschaltet. Query-Strings, Token,
 Antworten oder Besucheradressen dürfen auch nicht durch einen vorgeschalteten Prozess protokolliert
-werden.
+werden. Ein selbst gehosteter Aufruf von `/__eaf/visit` zählt ungefähre Tagesbesucher. Dafür wird
+die Verbindungsadresse ausschließlich im Arbeitsspeicher mit einem geheimen Tagesbezug in einen
+nicht rückrechenbaren Prüfwert umgewandelt. Die Prüfwerte werden binnen zwei Tagen entfernt;
+dauerhaft bleiben nur Summen nach Tag, Host und dem festen Bereich `vplan`. Es gibt kein
+Analyse-Cookie, keine tageübergreifende Verknüpfung und keinen externen Analysedienst.
 
 ## 7. Oberfläche und Browserdaten
 
@@ -277,7 +282,7 @@ Limit ist absichtlich global und anonym. Alle Zugriffe erfolgen über SQLAlchemy
 Werten und Transaktions-Rollback.
 
 Eine optionale UTF-8-Lehrkraftliste im Format `Frau/Herr Name` wird ausschließlich über den
-lokalen Operator-Befehl `uv run python -m backend.manage import-teachers DATEI` eingelesen. Der
+lokalen Operator-Befehl `.venv/bin/python -m backend.manage import-teachers DATEI` eingelesen. Der
 Befehl validiert die gesamte Datei vor dem Schreiben, speichert Namen und Varianten nur im
 aktuellen Schuljahr und bereinigt einen vorhandenen Cache atomar. Er kopiert die Quelldatei nicht
 und gibt weder Namen noch Inhalte aus. Während des Imports muss der VPlan-Prozess beendet sein;
@@ -288,6 +293,12 @@ die private Quelldatei bleibt außerhalb des Repositories und unter Verantwortun
 `JwtAuth`-Endpunkt übertragen und gelangen nie an Besucher, SQLite, Plan-Cache oder Logs.
 Offizielle Sitzungscookies existieren ausschließlich im RAM und enden spätestens mit dem
 VPlan-Prozess.
+
+Vor Produktionsupdates erstellt das Wartungswerkzeug lokale, nur für root zugängliche
+Sicherungen unter `/srv/.eaf-backups`. Sie enthalten auch die private Datenbank und Token.
+Sie werden nicht automatisch von den Löschjobs der aktiven Datenbank erfasst. Der Betreiber
+muss sie innerhalb von sieben Tagen und vor den geltenden Löschfristen beziehungsweise dem
+Schuljahreswechsel entfernen. Die Datenschutzhinweise beschreiben diese Einschränkung.
 
 Jede Änderung an IP-Verarbeitung, Cookies, Browser-Speicherung, API-Weitergabe, Datenbank oder
 Löschfristen muss gleichzeitig in `LegalPage.svelte`, `PlanApp.svelte` und allen freigeschalteten
@@ -306,9 +317,16 @@ nur im Browser und besitzt keinen Upload-Endpunkt.
 
 ## 10. Konfiguration und Betrieb
 
-Alle VPlan-Werte gehören in die lokale `.env`:
+Betreiber-Konfiguration gehört in die lokale, für den Dienst schreibgeschützte `.env`.
+Erneuerte Token liegen separat unter `VPLAN_DATA_DIR/api-token` (0600). Ein syntaktisch
+gültiger gespeicherter Token hat beim Start Vorrang; fehlende oder ungültige Dateien fallen
+auf `VPLAN_API_TOKEN` zurück. Lesefehler schlagen geschlossen fehl. Token werden bei
+Erneuerung ersetzt und bleiben bis zur Ersetzung oder manuellen Löschung gespeichert.
+Zum Zurücksetzen Dienst stoppen, gespeicherten Token löschen, `.env` aktualisieren und starten.
 
-- `VPLAN_API_TOKEN` – erforderliches Geheimnis;
+Konfigurationswerte:
+
+- `VPLAN_API_TOKEN` – Bootstrap-Geheimnis, sofern kein gültiger gespeicherter Token existiert;
 - `VPLAN_API_URL` – erforderlicher HTTPS-Endpunkt für den Planabruf;
 - `VPLAN_API_REFRESH_URL` – HTTPS-Endpunkt für die automatische JWT-Erneuerung;
 - `VPLAN_API_AUTH_URL` – HTTPS-Endpunkt für den optionalen neuen Sitzungsaufbau;
@@ -340,8 +358,9 @@ Build und Start:
 ```bash
 npm ci
 npm run build
-uv sync --all-groups
-uv run uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log
+uv venv --python 3.12
+uv pip install --python .venv/bin/python --upgrade -r pyproject.toml --group dev
+.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log --no-proxy-headers
 ```
 
 Der öffentliche Privex-Relay in Schweden muss `vplan.echteralsfake.me` verschlüsselt zum Tunnel auf
@@ -362,8 +381,8 @@ npm run check
 npm run lint
 npm test
 npm run build
-UV_CACHE_DIR=/tmp/vplan-uv-cache uv run pytest
-uv run python -m py_compile backend/*.py tests/*.py
+.venv/bin/python -m pytest
+.venv/bin/python -m py_compile backend/*.py tests/*.py
 git diff --check
 ```
 

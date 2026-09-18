@@ -29,6 +29,7 @@ def settings(tmp_path: Path) -> Settings:
         max_response_bytes=1024 * 1024,
         database_path=tmp_path / "vplan.db",
         cache_path=tmp_path / "plan-cache.json",
+        token_path=tmp_path / "data/api-token",
         configuration_errors=(),
     )
 

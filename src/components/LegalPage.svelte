@@ -29,6 +29,8 @@
         ['privacy.no_tracking.title', 'privacy.no_tracking.text'],
         ['legal.access_title', 'legal.access_text'],
         ['privacy.plan_requests.title', 'privacy.plan_requests.text'],
+        ['privacy.credentials.title', 'privacy.credentials.text'],
+        ['privacy.backups.title', 'privacy.backups.text'],
         ['privacy.local.title', 'privacy.local.text'],
         ['privacy.redaction.title', 'privacy.redaction.text'],
         ['privacy.feedback.title', 'privacy.feedback.text'],

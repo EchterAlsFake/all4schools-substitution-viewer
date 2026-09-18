@@ -7,6 +7,8 @@ from urllib.parse import urlsplit
 
 from dotenv import dotenv_values, load_dotenv
 
+from .token_store import read_token
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
@@ -58,6 +60,7 @@ class Settings:
     max_response_bytes: int
     database_path: Path
     cache_path: Path
+    token_path: Path
     configuration_errors: tuple[str, ...]
 
     @classmethod
@@ -66,7 +69,15 @@ class Settings:
         load_dotenv(dotenv_path, override=False)
         file_values = dotenv_values(dotenv_path)
         errors: list[str] = []
+        data_dir = _local_path(
+            base_dir, os.environ.get("VPLAN_DATA_DIR", base_dir / "data")
+        )
+        token_path = data_dir / "api-token"
         api_token = os.environ.get("VPLAN_API_TOKEN", "").strip()
+        try:
+            api_token = read_token(token_path) or api_token
+        except OSError:
+            errors.append("saved_api_token_unreadable")
         if not api_token:
             errors.append("missing_api_token")
 
@@ -110,15 +121,13 @@ class Settings:
         if not answers:
             errors.append("missing_gate_answers")
 
-        data_dir = _local_path(
-            base_dir, os.environ.get("VPLAN_DATA_DIR", base_dir / "data")
-        )
         return cls(
             base_dir=base_dir,
             api_url=api_url,
             api_refresh_url=api_refresh_url,
             api_auth_url=api_auth_url,
             api_token=api_token,
+            token_path=token_path,
             api_username=str(
                 file_values.get("USERNAME") or os.environ.get("USERNAME", "")
             ).strip(),

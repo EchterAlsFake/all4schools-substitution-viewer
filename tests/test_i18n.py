@@ -57,3 +57,13 @@ def test_transparency_notice_remains_german_in_every_catalog():
         assert {key: catalog[key] for key in notice_keys} == {
             key: source[key] for key in notice_keys
         }
+
+
+def test_aggregate_visit_count_is_disclosed_without_claiming_no_analytics():
+    index = (I18N_DIR.parents[1] / "index.html").read_text(encoding="utf-8")
+    assert 'src="/__eaf/visit.js"' in index
+    for code in ("de", "en"):
+        catalog = json.loads((I18N_DIR / f"{code}.json").read_text(encoding="utf-8"))
+        disclosure = catalog["privacy.no_tracking.text"].lower()
+        assert "cookie" in disclosure
+        assert "day" in disclosure or "tag" in disclosure

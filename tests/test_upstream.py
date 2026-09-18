@@ -238,10 +238,9 @@ def test_expired_token_is_refreshed_persisted_and_retried_once(settings):
     assert result["tokenRefreshed"] is True
     assert plan_tokens == ["test-token", refreshed_token]
     assert refresh_calls == [("test-token", "v3")]
-    persisted = env_path.read_text(encoding="utf-8")
-    assert f"VPLAN_API_TOKEN='{refreshed_token}'" in persisted
-    assert "VPLAN_SCHOOL_ID=999" in persisted
-    assert "test-token" not in persisted
+    assert settings.token_path.read_text().strip() == refreshed_token
+    assert settings.token_path.stat().st_mode & 0o777 == 0o600
+    assert env_path.read_text() == "VPLAN_API_TOKEN=test-token\nVPLAN_SCHOOL_ID=999\n"
 
 
 def test_invalid_refreshed_token_is_not_persisted_or_retried(settings):
@@ -453,9 +452,8 @@ def test_jwt_auth_accepts_authorization_header_and_persists_token(
 
     assert synchronizer._api_token == refreshed_token
     assert synchronizer._send_bearer is True
-    assert f"VPLAN_API_TOKEN='{refreshed_token}'" in env_path.read_text(
-        encoding="utf-8"
-    )
+    assert settings.token_path.read_text().strip() == refreshed_token
+    assert env_path.read_text() == "VPLAN_API_TOKEN=test-token\n"
 
 
 def test_session_auth_rejects_missing_credentials_without_network(settings):

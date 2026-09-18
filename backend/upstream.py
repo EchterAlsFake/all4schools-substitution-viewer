@@ -14,11 +14,11 @@ from zoneinfo import ZoneInfo
 
 from curl_cffi import requests
 from curl_cffi.requests.exceptions import RequestException
-from dotenv import set_key
 
 from .config import Settings
 from .database import Database
 from .schemas import UpstreamSubstitution, parse_upstream_substitutions
+from .token_store import write_token
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -411,16 +411,9 @@ class PlanSynchronizer:
 
     def _persist_api_token(self, token: str, error_code: str) -> None:
         try:
-            result = set_key(
-                self.settings.base_dir / ".env",
-                "VPLAN_API_TOKEN",
-                token,
-                quote_mode="always",
-            )
+            write_token(self.settings.token_path, token)
         except (OSError, ValueError) as exc:
             raise UpstreamError(error_code) from exc
-        if result[0] is not True:
-            raise UpstreamError(error_code)
         self._api_token = token
         self._send_bearer = True
 

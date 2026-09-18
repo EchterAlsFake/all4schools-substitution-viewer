@@ -1,0 +1,41 @@
+[Unit]
+Description=School substitution viewer
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/srv/vplan/.env
+
+[Service]
+Type=exec
+User=eaf-vplan
+Group=eaf-vplan
+WorkingDirectory=/srv/vplan
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=VPLAN_DATA_DIR=/srv/vplan/data
+Environment=VPLAN_DATABASE_PATH=/srv/vplan/data/vplan.db
+Environment=VPLAN_CACHE_PATH=/srv/vplan/data/plan-cache.json
+ExecStart=/srv/vplan/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8001 --workers 1 --no-access-log --no-proxy-headers
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/vplan/data
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
